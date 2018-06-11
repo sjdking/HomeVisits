@@ -4,7 +4,6 @@ SendMode Input  ; Recommended for new scripts due to its superior speed and reli
 SetWorkingDir %A_ScriptDir%  ; Ensures a consistent starting directory.
 
 ;Version 0.1
-;Date 11/06/2018
 
 ;Application for managing WASDRI Therapy Clinic
 
