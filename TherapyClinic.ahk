@@ -469,6 +469,7 @@ ButtonFinaliseIssue:
 	;Else
 	{
 		Gui, Submit, NoHide
+		StringUpper, patURN, patURN
 		IssueID := % PatURN . "S01"
 		
 		staff_Array := StrSplit(IssueScientist, ",")
@@ -482,17 +483,111 @@ ButtonFinaliseIssue:
 		IssueYYYY := SubStr(IssueDate, 1, 4)
 		IssueMM := SubStr(IssueDate, 5, 2)
 		IssueDD := SubStr(IssueDate, 7, 2)
-		IssueDate := % IssueDD . "/" . IssueMM . "/" . IssueYYYY
+		IssueDateFormatted := % IssueDD . "/" . IssueMM . "/" . IssueYYYY
 		
 		queryStatement1 := % "INSERT INTO Issues VALUES ('" . IssueID . "'
-		, '" . patURN . "', '" . IssueDate . "', '" . StaffID . "', '" . RadioMonitored . "'
+		, '" . patURN . "', '" . IssueDateFormatted . "', '" . StaffID . "', '" . RadioMonitored . "'
 		, '" . RadioPatientSleep . "', '" . IssueDevice . "', '" . IssuePressure . "', '" . IssueEPR . "'
 		, '" . IssueRamp . "', '" . IssueMask . "', '" . IssueMaskSize . "', '" . IssueChinstrap . "', '" . IssueChinstrapSize . "'
 		, '" . IssueOther . "', '" . IssueComments . "')"
 		objReturn := ADOSQL(TherapyConnect, queryStatement1)
+		
+		If RadioMonitored = 1
+			RadioMonitored := "Y"
+		Else
+			RadioMonitored := "N"
+		
+		If RadioPatientSleep = 1
+			RadioPatientSleep := "Y"
+		Else
+			RadioPatientSleep := "N"
 	}
 	GuiControl, Disable, btnFinIssue
-	MsgBox, Issue saved!
+	
+	issueTemplatePath := "C:\temp\AutoHotKeyScripts\TherapyClinic\TherapyClinic\Templates\EquipmentIssue.dotx"
+	issueDocName := % IssueID . "_" . IssueDate
+	issueDocumentPath = C:\IO8Takeup\%issueDocName%.docx
+	
+	wdApp := ComObjCreate("Word.Application")
+	wdApp.Visible := true
+	issueDoc := wdApp.Documents.Add(issueTemplatePath)
+	
+	bmarkPatientName := issueDoc.bookmarks.item("patientName").Range
+	bmarkPatientName.Select()
+	wdApp.Selection.TypeText(patLastName ", " patFirstName)
+	
+	bmarkPatientURN := issueDoc.bookmarks.item("patientURN").Range
+	bmarkPatientURN.Select()
+	wdApp.Selection.TypeText(patURN)
+	
+	bmarkPatientDOB := issueDoc.bookmarks.item("patientDOB").Range
+	bmarkPatientDOB.Select()
+	wdApp.Selection.TypeText(dateOfBirth)
+	
+	bmarkIssueDate := issueDoc.bookmarks.item("issueDate").Range
+	bmarkIssueDate.Select()
+	wdApp.Selection.TypeText(IssueDateFormatted)
+	
+	bmarkIssueComments := issueDoc.bookmarks.item("issueComments").Range
+	bmarkIssueComments.Select()
+	wdApp.Selection.TypeText(IssueComments)
+	
+	bmarkIssueDoctor := issueDoc.bookmarks.item("issueDoctor").Range
+	bmarkIssueDoctor.Select()
+	wdApp.Selection.TypeText(PrescribingDoctor)
+	
+	bmarkIssueScientist := issueDoc.bookmarks.item("issueScientist").Range
+	bmarkIssueScientist.Select()
+	wdApp.Selection.TypeText(IssueScientist)
+	
+	bmarkCpapDevice := issueDoc.bookmarks.item("cpapDevice").Range
+	bmarkCpapDevice.Select()
+	wdApp.Selection.TypeText(IssueDevice)
+	
+	bmarkCpapPressure := issueDoc.bookmarks.item("cpapPressure").Range
+	bmarkCpapPressure.Select()
+	wdApp.Selection.TypeText(IssuePressure)
+	
+	bmarkCpapEPR := issueDoc.bookmarks.item("cpapEPR").Range
+	bmarkCpapEPR.Select()
+	wdApp.Selection.TypeText(IssueEPR)
+	
+	bmarkCpapRamp := issueDoc.bookmarks.item("cpapRamp").Range
+	bmarkCpapRamp.Select()
+	wdApp.Selection.TypeText(IssueRamp)
+	
+	bmarkIssueMask := issueDoc.bookmarks.item("maskMask").Range
+	bmarkIssueMask.Select()
+	wdApp.Selection.TypeText(IssueMask)
+	
+	bmarkIssueMaskSize := issueDoc.bookmarks.item("maskMaskSize").Range
+	bmarkIssueMaskSize.Select()
+	wdApp.Selection.TypeText(IssueMaskSize)
+	
+	bmarkIssueChinstrap := issueDoc.bookmarks.item("maskChinstrap").Range
+	bmarkIssueChinstrap.Select()
+	wdApp.Selection.TypeText(IssueChinstrap)
+	
+	bmarkIssueChinstrapSize := issueDoc.bookmarks.item("maskChinstrapSize").Range
+	bmarkIssueChinstrapSize.Select()
+	wdApp.Selection.TypeText(IssueChinstrapSize)
+	
+	bmarkIssueOther := issueDoc.bookmarks.item("maskOther").Range
+	bmarkIssueOther.Select()
+	wdApp.Selection.TypeText(IssueOther)
+	
+	bmarkIssueMonitored := issueDoc.bookmarks.item("issueMonitored").Range
+	bmarkIssueMonitored.Select()
+	wdApp.Selection.TypeText(RadioMonitored)
+	
+	bmarkIssuePatientSleep := issueDoc.bookmarks.item("issueSleep").Range
+	bmarkIssuePatientSleep.Select()
+	wdApp.Selection.TypeText(RadioPatientSleep)
+		
+	wdApp.ActiveDocument.SaveAs(issueDocumentPath)
+
+	
+	MsgBox, Issue saved to IO takeup folder!
 	Return
 }
 
@@ -682,6 +777,7 @@ ButtonVisitSummary:
 
 	CurrentDoctor := Doctor%CurrentTab%
 	CurrentScientist := Scientist%CurrentTab%
+	CurrentVisitDate := VisitDate%CurrentTab%
 	GuiControl 2:, IsSmDr, %CurrentDoctor%
 	GuiControl 2:, IsSmPatURN, %patURN%
 	GuiControl 2:, IsSmPatName, % patLastName . ", " . patFirstName
@@ -832,4 +928,8 @@ PatientDetailsDisable:
 ^Esc::ExitApp
 
 GuiClose:
+{
+IfWinExist, Word
+	wdApp.Application.Quit()
 ExitApp
+}
