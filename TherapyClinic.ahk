@@ -19,10 +19,11 @@ Gui, Show, x100 y100, WASDRI Therapy Clinic... LOADING
 SetFormat, float, 0.2	;format to 2 decimal places
 Global ADOSQL_LastError, ADOSQL_LastQuery	;for troubleshooting SQL errors
 
-;Setup SQL connection strings for Oasis and TherapyClinic databases
+;Setup SQL connection strings for Oasis, TherapyClinic and Nexus databases
 	OasisConnect := "Driver={SQL Server};Server=WSQE004SQL\OASIS9_2;Database=OASIS;Uid=OasisUserWSQE004SQL;Pwd="
 	TherapyConnect := "Driver={SQL Server};Server=WSQE004SQL;Database=TherapyClinic;Uid=WASDRITC;Pwd=Therapy"
-
+	nexusConnect := "Driver={SQL Server};Server=WSQE004SQL;Database=NEXUS_WSQE004SQL;Uid=sa;Pwd=ppd.Sleep"
+	
 ;Initialise list of Sleep Scientists for use in lists
 	numSCNames := 0
 	queryStatement := "SELECT * FROM Staff WHERE Active = '1' AND StaffID LIKE 'SC%'"
@@ -348,7 +349,7 @@ StudyDetails:
 	Return
 }
 
-;subroutine when Generate Prescription button is pressed
+;Subroutine to generate prescription document
 ButtonGeneratePrescription:
 {
 	Gui, Submit, NoHide
@@ -375,12 +376,28 @@ ButtonGeneratePrescription:
 	}
 	
 	If (RadioTreatmentTypeFixed = "1")
-		treatmentType = Fixed
+	{
+		treatmentType = Fixed Pressure CPAP
+		prescCPAPText1 := "Recommended Pressure"
+		prescCPAPText2 := "Ramp Time"
+		prescCPAPText3 := ""
+		prescCPAP1 := % CPAPRecommendedPressure . " cmH2O"
+		prescCPAP2 := % RampTime . " minutes"
+		prescCPAP3 := ""
+	}
 	Else If (RadioTreatmentTypeAuto = "1")
-		treatmentType = Auto
+	{
+		treatmentType = Autoset CPAP
+		prescCPAPText1 := "Max CPAP"
+		prescCPAPText2 := "Min CPAP"
+		prescCPAPText3 := "Settling Time"
+		prescCPAP1 := % MinCPAP . " cmH2O"
+		prescCPAP2 := % MaxCPAP . " cmH2O"
+		prescCPAP3 := % SettlingTime . " minutes"
+	}
 		
 	PrescriptionID := % patURN . "P01"	;set SQL ID code for Prescription table
-;FUTURE UPDATE: Allow for more than Prescrition to be added ie: URNXXXXXP02, URNXXXXP03 etc
+;FUTURE UPDATE: Allow for more than Prescription to be added ie: URNXXXXXP02, URNXXXXXP03 etc
 		
 	;convert checkbox options into a CSV string for insertion into SQL
 	strOption := % Oximetry . "," . HeatedHumidifier . "," . Chinstrap . "," . NoseMask . "," . FullFaceMask . "," . PressureRelief
@@ -392,20 +409,198 @@ ButtonGeneratePrescription:
 	staffLastName = %staffLastName%
 	queryStatement := % "SELECT StaffID FROM Staff WHERE FirstName = '" . staffFirstName . "' AND LastName = '" . staffLastName . "'"
 	objReturn := ADOSQL(TherapyConnect, queryStatement)
-	PrescribingDoctor := % objReturn[2,1]	;returns DR code from Therapy SQL DB
+	PrescribingDoctorCode := % objReturn[2,1]	;returns DR code from Therapy SQL DB
 	PrescYYYY := SubStr(PrescriptionDate, 1, 4)
 	PrescMM := SubStr(PrescriptionDate, 5, 2)
 	PrescDD := SubStr(PrescriptionDate, 7, 2)
-	PrescriptionDate := % PrescDD . "/" . PrescMM . "/" . PrescYYYY	;formats date for insertion into Therapy SQL DB
+	PrescriptionDateFormatted := % PrescDD . "/" . PrescMM . "/" . PrescYYYY	;formats date for insertion into Therapy SQL DB
 	
 	prescStatement1 := % "INSERT INTO Prescriptions VALUES ('" . PrescriptionID . "'
-		, '" . patURN . "', '" . PrescriptionDate . "', '" . RadioPrescriptionType . "', '" . treatmentType . "', '" . strOption . "'
+		, '" . patURN . "', '" . PrescriptionDateFormatted . "', '" . RadioPrescriptionType . "', '" . treatmentType . "', '" . strOption . "'
 		, '" . CPAPRecommendedPressure . "', '" . RampTime . "', '" . MinCPAP . "', '" . MaxCPAP . "'
-		, '" . SettlingTime . "', '" . DoctorsComments . "', '" . PrescribingDoctor . "')"
+		, '" . SettlingTime . "', '" . DoctorsComments . "', '" . PrescribingDoctorCode . "')"
 
 	objReturn := ADOSQL(TherapyConnect, prescStatement1)	;execute SQL query
 	GuiControl, Disable, btnGenPresc	;disable this button so that no more edits can be made to prescription
-	MsgBox, Prescription saved!
+	
+	GoSub, PrescDoc
+	MsgBox, Prescription saved to IO Takeup folder!
+	Return
+}
+
+;Subroutine to generate prescription document and save to Info Organiser Takeup folder
+PrescDoc:
+{
+	prescTemplatePath := "C:\temp\AutoHotKeyScripts\TherapyClinic\TherapyClinic\Templates\TCPrescription.dotx"
+	prescDocName := % PrescriptionID . "_" . PrescriptionDate
+	prescDocumentPath = C:\IO8Takeup\%prescDocName%.docx
+	
+	studyYYYY := SubStr(StudyDate, 1, 4)
+	studyMM := SubStr(StudyDate, 5, 2)
+	studyDD := SubStr(StudyDate, 7, 2)
+	studyDateFormatted := % studyDD . "/" . studyMM . "/" . studyYYYY
+	
+	wdApp := ComObjCreate("Word.Application")
+	wdApp.Visible := true
+	prescDoc := wdApp.Documents.Add(prescTemplatePath)
+	
+	bmarkPatientName := prescDoc.bookmarks.item("patientName").Range
+	bmarkPatientName.Select()
+	wdApp.Selection.TypeText(patLastName ", " patFirstName)
+	
+	bmarkPrescDate := prescDoc.bookmarks.item("prescDate").Range
+	bmarkPrescDate.Select()
+	wdApp.Selection.TypeText(PrescriptionDateFormatted)
+	
+	;create correct string for special considerations/needs
+	If Veteran = 0
+		strVeteran := ""
+	Else strVeteran := "Veteran, "
+	If Pensioner = 0
+		strPensioner := ""
+	Else strPensioner := "Pensioner, "
+	If DSC = 0
+		strDSC := ""
+	Else strDSC := "DSC, "
+	If Prisoner = 0
+		strPrisoner := ""
+	Else strPrisoner := "Prisoner, "
+	If PMImpairment = 0
+		PMImpairment := ""
+	Else PMImpairment := "Physical/Mental Impairment, "
+	If Country = 0
+		strCountry := ""
+	Else strCountry := "Country"
+	
+	strSpec := % RTrim(strVeteran strPensioner strDSC strPrisoner strPMImpairment strCountry, ", ")
+		
+	bmarkPrescSpec := prescDoc.bookmarks.item("prescPatSpecialNeeds").Range
+	bmarkPrescSpec.Select()
+	wdApp.Selection.TypeText(strSpec)
+	
+	;create correct string for prescription urgency
+	If urgInpatient = 0
+		urgInpatient := ""
+	Else urgInpatient := "Inpatient, "
+	If urgRespFailure = 0
+		urgRespFailure := ""
+	Else urgRespFailure := "Respiratory Failure, "
+	If urgOccDriver = 0
+		urgOccDriver := ""
+	Else urgOccDriver := "Occupational Driver, "
+	If urgSevereOSA = 0
+		urgSevereOSA := ""
+	Else urgSevereOSA := "Severe OSA and/or ESS >16, "
+	
+	strUrgency := % RTrim(urgInpatient urgRespFailure urgOccDriver urgSevereOSA urgOtherText, ", ")
+	
+	bmarkPrescUrgency := prescDoc.bookmarks.item("prescUrgency").Range
+	bmarkPrescUrgency.Select()
+	wdApp.Selection.TypeText(strUrgency)
+	
+	bmarkPrescURN := prescDoc.bookmarks.item("patientURN").Range
+	bmarkPrescURN.Select()
+	wdApp.Selection.TypeText(patURN)
+	
+	bmarkPrescDOB := prescDoc.bookmarks.item("patientDOB").Range
+	bmarkPrescDOB.Select()
+	wdApp.Selection.TypeText(dateOfBirth)
+	
+	bmarkPrescStudyDate := prescDoc.bookmarks.item("prescStudyDate").Range
+	bmarkPrescStudyDate.Select()
+	wdApp.Selection.TypeText(studyDateFormatted)
+	
+	bmarkPrescAHI := prescDoc.bookmarks.item("prescAHI").Range
+	bmarkPrescAHI.Select()
+	wdApp.Selection.TypeText(AHI)
+	
+	bmarkPrescSpO2 := prescDoc.bookmarks.item("prescSpO2").Range
+	bmarkPrescSpO2.Select()
+	wdApp.Selection.TypeText(SpO2Nadir)
+	
+	bmarkPrescESS := prescDoc.bookmarks.item("prescESS").Range
+	bmarkPrescESS.Select()
+	wdApp.Selection.TypeText(ESS)
+	
+	bmarkPrescSymptoms := prescDoc.bookmarks.item("prescSymptoms").Range
+	bmarkPrescSymptoms.Select()
+	wdApp.Selection.TypeText(MainSymptomsText)
+	
+	bmarkPrescDevType := prescDoc.bookmarks.item("prescDeviceType").Range
+	bmarkPrescDevType.Select()
+	wdApp.Selection.TypeText(treatmentType)
+	
+	bmarkPrescCPAPText1 := prescDoc.bookmarks.item("prescCPAPText1").Range
+	bmarkPrescCPAPText1.Select()
+	wdApp.Selection.TypeText(prescCPAPText1)
+	
+	bmarkPrescCPAPText2 := prescDoc.bookmarks.item("prescCPAPText2").Range
+	bmarkPrescCPAPText2.Select()
+	wdApp.Selection.TypeText(prescCPAPText2)
+	
+	bmarkPrescCPAPText3 := prescDoc.bookmarks.item("prescCPAPText3").Range
+	bmarkPrescCPAPText3.Select()
+	wdApp.Selection.TypeText(prescCPAPText3)
+	
+	bmarkPrescCPAP1 := prescDoc.bookmarks.item("prescCPAP1").Range
+	bmarkPrescCPAP1.Select()
+	wdApp.Selection.TypeText(prescCPAP1)
+	
+	bmarkPrescCPAP2 := prescDoc.bookmarks.item("prescCPAP2").Range
+	bmarkPrescCPAP2.Select()
+	wdApp.Selection.TypeText(prescCPAP2)
+	
+	bmarkPrescCPAP3 := prescDoc.bookmarks.item("prescCPAP3").Range
+	bmarkPrescCPAP3.Select()
+	wdApp.Selection.TypeText(prescCPAP3)
+	
+	If RadioPrescriptionType = 1
+		prescType := "4 Week Physician Trial"
+	Else If RadioPrescriptionType = 2
+		prescType := "Therapy Clinic"
+	Else If RadioPrescriptionType = 3
+		prescType := "Purchase"
+	
+	bmarkPrescType := prescDoc.bookmarks.item("prescType").Range
+	bmarkPrescType.Select()
+	wdApp.Selection.TypeText(prescType)
+	
+	;create correct string for prescription options
+	If Oximetry = 0
+		strOximetry := ""
+	Else strOximetry := "Oximetry, "
+	If HeatedHumidifier = 0
+		strHeatedHumidifier := ""
+	Else strHeatedHumidifier := "Heated Humidifier, "
+	If Chinstrap = 0
+		strChinstrap := ""
+	Else strChinstrap := "Chinstrap, "
+	If NoseMask = 0
+		strNoseMask := ""
+	Else strNoseMask := "Nose Mask, "
+	If FullFaceMask = 0
+		strFullFaceMask := ""
+	Else strFullFaceMask := "Full Face Mask, "
+	If PressureRelief = 0
+		strPressureRelief := ""
+	Else strPressureRelief := "Pressure Relief, "
+	
+	prescOptions := % RTrim(strOximetry strHeatedHumidifier strChinstrap strNoseMask strFullFaceMask strPressureRelief, ", ")
+	
+	bmarkPrescOptions := prescDoc.bookmarks.item("prescOptions").Range
+	bmarkPrescOptions.Select()
+	wdApp.Selection.TypeText(prescOptions)
+	
+	bmarkPrescComments := prescDoc.bookmarks.item("prescComments").Range
+	bmarkPrescComments.Select()
+	wdApp.Selection.TypeText(DoctorsComments)
+	
+	bmarkPrescDoctor := prescDoc.bookmarks.item("prescDoctor").Range
+	bmarkPrescDoctor.Select()
+	wdApp.Selection.TypeText(PrescribingDoctor)
+	
+	wdApp.ActiveDocument.SaveAs(prescDocumentPath)
+	
 	Return
 }
 
@@ -418,8 +613,11 @@ TreatmentCheck:
 		GuiControl, Enable, CPAPRecommendedPressure
 		GuiControl, Enable, RampTime
 		GuiControl, Disable, MaxCPAP
+		GuiControl,, MaxCPAP,
 		GuiControl, Disable, MinCPAP
+		GuiControl,, MinCPAP,
 		GuiControl, Disable, SettlingTime
+		GuiControl,, SettlingTime,
 		GuiControl, Enable, strCPAPRecommendedPressure
 		GuiControl, Enable, strCPAPRecommendedPressurecmH2O
 		GuiControl, Enable, strRampTime
@@ -434,7 +632,9 @@ TreatmentCheck:
 	If (RadioTreatmentTypeAuto = 1)
 	{
 		GuiControl, Disable, CPAPRecommendedPressure
+		GuiControl,, CPAPRecommendedPressure,
 		GuiControl, Disable, RampTime
+		GuiControl,, RampTime,
 		GuiControl, Enable, MaxCPAP
 		GuiControl, Enable, MinCPAP
 		GuiControl, Enable, SettlingTime
@@ -585,7 +785,6 @@ ButtonFinaliseIssue:
 	wdApp.Selection.TypeText(RadioPatientSleep)
 		
 	wdApp.ActiveDocument.SaveAs(issueDocumentPath)
-
 	
 	MsgBox, Issue saved to IO takeup folder!
 	Return
@@ -822,8 +1021,8 @@ PrescriptionFill:
 		prescYYYY := SubStr(prescDate, 7, 4)
 		prescMM := SubStr(prescDate, 4, 2)
 		prescDD := SubStr(prescDate, 1, 2)
-		prescDate := % prescYYYY . prescMM . prescDD
-		MsgBox, Presc date is %prescDate%	;TESTING
+		prescDateFormatted := % prescYYYY . prescMM . prescDD
+		MsgBox, Presc date is %prescDateFormatted%	;TESTING
 	}
 	
 	prescType := % prescriptionObjReturn[2,4]
@@ -867,7 +1066,7 @@ PrescriptionFill:
 		GuiControl, Disable, SettlingTime
 	}
 	
-	GuiControl,, PrescriptionDate, %prescDate%
+	GuiControl,, PrescriptionDate, %prescDateFormatted%
 	GuiControl, , RadioTreatmentTypeAuto, %prescTypeAuto%
 	GuiControl, , RadioTreatmentTypeFixed, %prescTypeFixed%
 	GuiControl,, CPAPRecommendedPressure, %prescRecPress%
