@@ -24,21 +24,19 @@ Gui, Add, Text, x98 yp30 w180 vStrAddress1
 Gui, Add, Text, yp20 w180 vStrSuburb
 Gui, Font, s08 w400
 
-;Gui, Add, Button, x18 y110 gshowAddress, Address:`nClick to show
 Gui, Add, Text, x20 y110, Address:
 Gui, Add, Link, x98 y110 w150 h100 vstrAddressLink
-;Gui, Add, Checkbox, x200 y20 vpatActive, Active
-;GuiControl, Disable, patActive
 
 Gui, Add, GroupBox, x270 y20 w170 h190, Details
 Gui, Add, Text, x290 yp20 w77 vstrPatActive
 Gui, Add, Text, x290 yp20 w77 h21 vstrFundingSource
-;Gui, Add, DDL, yp15 w100 h23 r4 vfundingSource, DSC|MND|Public Fund|Self Funded
 Gui, Add, Text, yp20 w100 vstrConsultant
-;Gui, Add, DDL, yp15 w100 h23 r12 vpatConsultant, Dr B. Singh|Dr C. Kosky|Dr N. McArdle|Dr A. James|Dr I. Ling|Dr R. Warren|Dr J. Leong|Dr S. Phung|Registrar 1|Registrar 2|Registrar 3
-
 Gui, Add, Text, yp20 w100 vstrDiagnosis
-;Gui, Add, Edit, xp77 yp-2 vpatDiagnosis
+Gui, Add, Text, yp20 w100 vstrLifeSupport
+Gui, Add, Text, yp20 w100 vstrWheelchair
+Gui, Add, Text, yp20 w100 vstrHoursUse
+Gui, Add, Text, yp20 w100 vstrCountry
+Gui, Add, Text, yp20 w100 vstrTrach
 
 Gui, Add, Button, x300 y180 w105 gbtnDetails, Edit Details
 
@@ -63,7 +61,7 @@ Gui, Add, Text, x30 yp30, Comments:
 Gui, Add, Edit, xp70 yp0 w220 h110 vpatComments
 
 Gui, Add, GroupBox, x340 y230 w325 h330, Settings
-Gui, Add, Text, x360 yp30, Mode:
+/*Gui, Add, Text, x360 yp30, Mode:
 Gui, Add, DDL,  yp15 w50 r3 vtimedMode, ST|S|T
 Gui, Add, Text, yp32, IPAP:
 Gui, Add, Edit, yp15 w50 vintIPAP
@@ -105,6 +103,10 @@ GuiControl, Font, riseTime
 GuiControl, Font, intTiMax
 GuiControl, Font, cycle
 Gui, Font, s08 w400
+*/
+
+Gui, Add, ListView, x350 y250 r11 w295 Grid, Option|Setting
+LV_ModifyCol(1, 100)	;specify width of 100 for column 1
 
 Gui, Add, Button, x550 y590 gbtnSaveAppointment, Save
 Gui, Add, Button, x600 y590 gbtnCancel, Cancel
@@ -116,7 +118,7 @@ Return
 btnDetails:
 {
 	Gui, Submit, NoHide
-	Gui, 2:Add, CheckBox, x10 y10 vpatActive, Patient Active
+	Gui, 2:Add, CheckBox, x10 y10 vpatActive, Patient active
 	Gui, 2:Add, Text, yp30, Funding
 	Gui, 2:Add, DDL, yp15 w100 h23 r5 vfundingSource, DSC|MND|Public Fund|Self Funded|Not yet on NIV
 	Gui, 2:Add, Text, yp30, Consultant
@@ -130,7 +132,19 @@ btnDetails:
 	Gui, 2:Add, Checkbox, yp30 vTrach, 8+ hours via tracheostomy
 	Gui, 2:Add, Button, x180 y360 w50 gbtnDetailsSave, Save
 	Gui, 2:Add, Button, x240 yp0 w50 gbtnDetailsCancel, Cancel
-	GuiControl,2:,patActive,%patDBActive%
+	
+	If (newPatient = False)
+	{
+		GuiControl,2:,patActive,%patDBActive%
+		GuiControl,2:Choose,fundingSource,%patDBFunding%
+		GuiControl,2:Choose,patDiagnosis,%patDBDiagnosis%
+		GuiControl,2:Choose,patConsultant,%patDBConsultant%
+		GuiControl,2:,LifeSupport,%patDBLife%
+		GuiControl,2:,WheelchairMount,%patDBWheelchair%
+		GuiControl,2:,HoursUse,%patDBHoursUse%
+		GuiControl,2:,CountryPatient,%patDBCountry%
+		GuiControl,2:,Trach,%patDBTrach%
+	}
 	
 	Gui, 2:Show, w300 h400
 	Return
@@ -146,13 +160,13 @@ btnDetailsSave:
 
 	If (newPatient = True)
 	{
-		insertDetails := % "INSERT INTO HomeVisits VALUES ('" . patURN . "', '" . patDiagnosis . "', '" . fundingSource . "', '" . patConsultant . "', '" . patActive . "')"
+		insertDetails := % "INSERT INTO HomeVisits VALUES ('" . patURN . "', '" . patDiagnosis . "', '" . fundingSource . "', '" . patConsultant . "', '" . patActive . "', '" . LifeSupport . "', '" . WheelchairMount . "', '" . HoursUse . "', '" . CountryPatient . "', '" . Trach . "')"
 		objReturn := ADOSQL(TherapyConnect, insertDetails)
 		newPatient := False
 	}
 	Else
 	{
-		updateDetails := % "UPDATE HomeVisits SET Diagnosis = '" . patDiagnosis . "', Funding = '" . fundingSource . "', Consultant = '" . patConsultant . "', Active = '" . patActive . "' WHERE patURN = '" . patURN . "'"
+		updateDetails := % "UPDATE HomeVisits SET Diagnosis = '" . patDiagnosis . "', Funding = '" . fundingSource . "', Consultant = '" . patConsultant . "', Active = '" . patActive . "', LifeSupport = '" . LifeSupport . "', Wheelchair = '" . WheelchairMount . "', HoursUse = '" . HoursUse . "', CountryPatient = '" . CountryPatient . "', Trach = '" . Trach . "' WHERE patURN = '" . patURN . "'"
 		objReturn := ADOSQL(TherapyConnect, updateDetails)
 	}
 	MsgBox, Details saved
@@ -361,8 +375,14 @@ LoadDetails:
 		newPatient := False
 		patDBDiagnosis := % patientObjReturn[2,2]
 		patDBFunding := % patientObjReturn[2,3]
+		patDBFunding = %patDBFunding%
 		patDBConsultant := % patientObjReturn[2,4]
 		patDBActive := % patientObjReturn[2,5]
+		patDBLife := % patientObjReturn[2,6]
+		patDBWheelchair := % patientObjReturn[2,7]
+		patDBHoursUse := % patientObjReturn[2,8]
+		patDBCountry := % patientObjReturn[2,9]
+		patDBTrach := % patientObjReturn[2,10]
 		
 		If (patDBActive = 1)
 			strDBActive := "Patient Active"
@@ -373,6 +393,11 @@ LoadDetails:
 		GuiControl,, strConsultant, %patDBConsultant%
 		GuiControl,, strDiagnosis, %patDBDiagnosis%
 		GuiControl,, strPatActive, %strDBActive%
+		GuiControl,, strLifeSupport, %patDBLife%
+		GuiControl,, strWheelchair, %patDBWheelchair%
+		GuiControl,, strHoursUse, %patDBHoursUse%
+		GuiControl,, strCountry, %patDBCountry%
+		GuiControl,, strTrach, %patDBTrach%
 	}
 	Else
 		newPatient := True
